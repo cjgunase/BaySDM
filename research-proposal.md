@@ -22,3 +22,11 @@ http://www.geog.ucsb.edu/~kclarke/Papers/ArthurCarlsonClarke_RSE.pdf
 
 why SDM ?
 http://www.ecologyandsociety.org/vol15/iss1/art8/
+
+why mechanistics
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2775628/
+
+cloud implementation
+https://www.researchgate.net/publication/237011397_Species_Distribution_Modeling_in_the_Cloud
+
+
