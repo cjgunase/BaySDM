@@ -20,3 +20,5 @@ http://www.fs.fed.us/nrs/pubs/jrnl/2015/nrs_2015_george_002.pdf
 http://www.geog.ucsb.edu/~kclarke/Papers/ArthurCarlsonClarke_RSE.pdf
 
 
+why SDM ?
+http://www.ecologyandsociety.org/vol15/iss1/art8/
