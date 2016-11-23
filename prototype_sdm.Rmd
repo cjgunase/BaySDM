@@ -1,0 +1,274 @@
+---
+title: "prototype_sdm"
+author: "Chathura"
+date: "November 22, 2016"
+output: pdf_document
+---
+
+Load data and select reptiles and amphebians for thermal_SDM modelling. The tropical ectothems are used to model. these species have the highly sensitive to temperature so more likely to extinct under global warming.
+
+```{r}
+sunday<-read.csv("./Sundayetal_thermallimits.csv",header = T,sep = ",")
+tropic_Amphibia <- sunday[sunday$class=="Amphibia" & -23 < sunday$latitude & sunday$latitude < 23,]
+tropic_reptilia <-sunday[sunday$class=="Reptilia" & -23 < sunday$latitude & sunday$latitude < 23,]
+```
+
+To test the model, select one species and build a correlative SDM. Download from GBIF and extact points in tropical regions.
+
+```{r}
+spei<-tropic_reptilia[2,]
+print(spei$species)
+spe1_gbif<-gbif(genus = as.character(spei$genus),species = as.character(spei$species),geo=T)
+spe1<-spe1_gbif[!(is.na(spe1_gbif$lat) |is.na(spe1_gbif$lat) ),]
+```
+Chamaeleo_dilepis, is a species in africa, so remove other points outside africa and duplicates from same point.
+```{r}
+spe1_afr<-spe1[-25 < spe1$lon & spe1$lon < 50,]
+spe1_afr[1:4,c("class","lat","lon")]
+dups <- duplicated(spe1_afr[,c('lon','lat')])
+sum(dups)
+cham<-spe1_afr[!dups,]
+```
+cross checking, this may not a big deal.
+```{r}
+library(sp)
+coordinates(cham) <-~lon+lat
+crs(cham) <-crs(wrld_simpl)
+class(cham)
+class(wrld_simpl)
+ovr <- over(cham,wrld_simpl)
+head(ovr)
+cntr <- ovr$NAME
+i<-which(is.na(cntr))
+i
+j <-which(cntr != cham$country)
+cbind(cntr,cham$country)[j,]
+plot(cham)
+plot(wrld_simpl,add=T,border='blue',lwd=2)
+points(cham[j,],col='red',pch=20,cex=2)
+```
+nice plot
+```{r}
+library(maptools)
+data(wrld_simpl)
+plot(wrld_simpl, xlim=c(-100,110), ylim=c(-60,30), axes=TRUE,col="light yellow")
+box()
+points(spe1_afr$lon, spe1_afr$lat, col='orange', pch=20, cex=0.75)
+points(spe1_afr$lon, spe1_afr$lat, col='red', cex=0.75)
+```
+
+Correcting for sampling bias
+```{r}
+r <- raster(cham)
+res(r) <- 1
+r <- extend(r,extent(r) + 1)
+cham_sel<-gridSample(cham,r,n=1)
+p <- rasterToPolygons(r)
+plot(p,border='gray')
+points(cham)
+points(cham_sel,cex=1,col='red',pch='x')
+```
+
+generating absent and background points (psudo-absences) use circles model.
+
+```{r}
+
+
+files <- list.files(path=paste(system.file(package="dismo"), '/ex',
+                                   sep=''), pattern='grd', full.names=TRUE )
+# we use the first file to create a RasterLayer
+mask <- raster(files[1])
+# select 500 random points
+# set seed to assure that the examples will always
+# have the same random sample.
+set.seed(1963)
+bg <- randomPoints(mask, 500 )
+
+# set up the plotting area for two maps
+par(mfrow=c(1,2))
+
+plot(!is.na(mask), legend=FALSE)
+points(bg, cex=0.5)
+# now we repeat the sampling, but limit
+# the area of sampling using a spatial extent
+e <- extent(-80, -53, -39, -22)
+bg2 <- randomPoints(mask, 50, ext=e)
+plot(!is.na(mask), legend=FALSE)
+plot(e, add=TRUE, col='red')
+points(bg2, cex=0.5)
+
+
+
+
+
+
+
+cham_sel<-data.frame(cham_sel)
+coordinates(cham_sel) <- ~lon+lat
+projection(cham_sel) <- CRS('+proj=longlat +datum=WGS84')
+x <- circles(cham_sel,d=50000,lonlat=TRUE)
+pol <- polygons(x)
+samp1 <- spsample(pol,250,type='random',iter=25)
+cells <- cellFromXY(mask,samp1)
+length(cells)
+cells <- unique(cells)
+
+```
+
+Environmental data
+
+```{r}
+require(raster) # package to handle raster-formatted spatial data
+BClim = getData("worldclim", var="bio", res=2.5, path="data/")
+YbrevRange = extent(-25,60,-40,40) # define the extent
+BClim = crop(BClim, YbrevRange)
+writeRaster(BClim, filename="./data/YbrevBC_2.5.grd", overwrite=T)
+BClim <- brick("./data/YbrevBC_2.5.grd")
+# this format plots the first (of 19) variables stored in BClim; change the 1 to 2-19 for the others
+plot(BClim, 1, cex=0.5, legend=T, mar=par("mar"), xaxt="n", yaxt="n", main="Annual mean temperature (ºC x 10)")
+map("state", xlim=c(-119, -113), ylim=c(33.5, 38), fill=F, col="cornsilk", add=T)
+```
+
+Example
+
+```{r}
+# packages for mapping, and the data for, e.g., state borders
+require(maptools)
+require(maps)
+require(mapdata)
+require(dismo)# dismo has the SDM analyses we"ll need
+# load the table of latitude and longitude coordinates
+locs = read.csv(file="./data/JoTrPresence02202008_dryad.txt", header=T, sep="\t")
+# then plot these points to check them ...
+data(stateMapEnv) # load the database with the U.S. state borders
+# notice we're limiting the extent of the map to focus on the Mojave Desert region
+plot(c(-119, -113), c(33.5, 38), mar=par("mar"), xlab="longitude", ylab="latitude", xaxt="n", yaxt="n", type="n", main="Joshua tree presence data")
+rect(par("usr")[1],par("usr")[3],par("usr")[2],par("usr")[4], col="lightblue")
+map("state", xlim=c(-119, -113), ylim=c(33.5, 38), fill=T, col="cornsilk", add=T)
+# add some nice state labels ...
+text(x=-117.5, y=35.5, "California", col="cornsilk3", cex=3)
+text(x=-116, y=37.5, "Nevada", col="cornsilk3", cex=3)
+text(x=-113, y=34.5, "Arizona", col="cornsilk3", cex=3)
+text(x=-113, y=37.75, "Utah", col="cornsilk3", cex=3)
+# plot the points
+points(locs$longitude, locs$latitude, col="darkolivegreen4", pch=20, cex=0.5)
+# add some axes
+axis(1,las=1)
+axis(2,las=1)
+box()
+
+```
+
+```{r}
+
+# create sequences of latitude and longitude values to define the grid
+longrid = seq(-119,-113,0.05)
+latgrid = seq(33.5,38,0.05)
+
+# identify points within each grid cell, draw one at random
+subs = c()
+for(i in 1:(length(longrid)-1)){
+  for(j in 1:(length(latgrid)-1)){
+    gridsq = subset(locs, latitude > latgrid[j] & latitude < latgrid[j+1] & longitude > longrid[i] & longitude < longrid[i+1])     
+    if(dim(gridsq)[1]>0){
+      subs = rbind(subs, gridsq[sample(1:dim(gridsq)[1],1 ), ])
+    }
+  }
+}
+dim(subs) # confirm that you have a smaller dataset than you started with
+# define circles with a radius of 50 km around the subsampled points
+x = circles(subs[,c("longitude","latitude")], d=50000, lonlat=T)
+# draw random points that must fall within the circles in object x
+bg = spsample(x@polygons, 1000, type='random', iter=1000)
+
+```
+
+```{r}
+require(raster) # package to handle raster-formatted spatial data
+BClim = getData("worldclim", var="bio", res=2.5, path="data/")
+YbrevRange = extent(-119.25,-112.75,33.25,38.25) # define the extent
+BClim = crop(BClim, YbrevRange)
+writeRaster(BClim, filename="./data/YbrevBC_2.5.grd", overwrite=T)
+BClim = brick("data/YbrevBC_2.5.grd")
+# this format plots the first (of 19) variables stored in BClim; change the 1 to 2-19 for the others
+plot(BClim, 1, cex=0.5, legend=T, mar=par("mar"), xaxt="n", yaxt="n", main="Annual mean temperature (ºC x 10)")
+map("state", xlim=c(-119, -113), ylim=c(33.5, 38), fill=F, col="cornsilk", add=T)
+# state names
+text(x=-117.5, y=35.5, "California", col=rgb(1,1,1,0.4), cex=3)
+text(x=-116, y=37.5, "Nevada", col=rgb(1,1,1,0.4), cex=3)
+text(x=-113, y=34.5, "Arizona", col=rgb(1,1,1,0.4), cex=3)
+text(x=-113, y=37.75, "Utah", col=rgb(1,1,1,0.4), cex=3)
+# plot the presence points
+points(locs$longitude, locs$latitude, pch=20, cex=0.5, col="darkgreen")
+# and the pseudo-absence points
+points(bg, cex=0.5, col="darkorange3")
+# add axes
+axis(1,las=1)
+axis(2,las=1)
+# restore the box around the map
+box()
+```
+
+```{r}
+# pulling bioclim values
+Ybrev_bc = extract(BClim, subs[,c("longitude","latitude")]) # for the subsampled presence points
+bg_bc = extract(BClim, bg) # for the pseudo-absence points
+Ybrev_bc = data.frame(lon=subs$longitude, lat=subs$latitude, Ybrev_bc)
+bgpoints = bg@coords
+colnames(bgpoints) = c("lon","lat")
+bg_bc = data.frame(cbind(bgpoints,bg_bc))
+length(which(is.na(bg_bc$bio1))) # double-check for missing data
+bg_bc = bg_bc[!is.na(bg_bc$bio1), ] # and pull out the missing lines
+group_p = kfold(Ybrev_bc, 5) # vector of group assignments splitting the Ybrev_bc into 5 groups
+group_a = kfold(bg_bc, 5) # ditto for bg_bc
+
+test = 3
+
+train_p = Ybrev_bc[group_p!=test, c("lon","lat")]
+train_a = bg_bc[group_a!=test, c("lon","lat")]
+test_p = Ybrev_bc[group_p==test, c("lon","lat")]
+test_a = bg_bc[group_a==test, c("lon","lat")]
+
+me = maxent(BClim, p=train_p, a=train_a)
+train_p = Ybrev_bc[group_p!=test, c("lon","lat")]
+train_a = bg_bc[group_a!=test, c("lon","lat")]
+test_p = Ybrev_bc[group_p==test, c("lon","lat")]
+test_a = bg_bc[group_a==test, c("lon","lat")]
+
+me = maxent(BClim, p=train_p, a=train_a)
+
+e = evaluate(test_p, test_a, me, BClim)
+e
+
+
+```
+
+
+```{r}
+
+pred_me = predict(me, BClim) # generate the predictions
+# make a nice plot
+plot(pred_me, 1, cex=0.5, legend=T, mar=par("mar"), xaxt="n", yaxt="n", main="Predicted presence of Joshua trees")
+map("state", xlim=c(-119, -113), ylim=c(33.5, 38), fill=F, col="cornsilk", add=T)
+
+# state names
+text(x=-117.5, y=35.5, "California", col=rgb(1,1,1,0.6), cex=3)
+text(x=-116, y=37.5, "Nevada", col=rgb(1,1,1,0.6), cex=3)
+text(x=-113, y=34.5, "Arizona", col=rgb(1,1,1,0.6), cex=3)
+text(x=-113, y=37.75, "Utah", col=rgb(1,1,1,0.6), cex=3)
+
+# presence points
+points(locs$longitude, locs$latitude, pch=20, cex=0.5, col="darkgreen")
+# pseud-absence points
+points(bg, cex=0.5, col="darkorange3")
+
+# add axes
+axis(1,las=1)
+axis(2,las=1)
+
+# restore the box around the map
+box()
+```
+
+
+
