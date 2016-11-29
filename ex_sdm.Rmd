@@ -8,14 +8,15 @@ output: html_document
 
 ### Gaussian Random Fields
 
-Using presense data about the species Xantusia Riversiana.
+Using presense data about the species Xantusia Riversiana. 
+
 ```{r, echo=FALSE}
 url <- "http://www.californiaherps.com/lizards/images/xriversiana104.jpg"
 ```
 <img src="`r url`" height="200px" width="150px">
 
 ### Plot the presence on map
-```{r, message=FALSE, warning= FALSE, collapse=TRUE}
+```{r, message=FALSE, warning= FALSE}
 # load package and data
 require(maptools)
 require(maps)
@@ -24,7 +25,7 @@ require(dismo)
 require(GRaF)
 locs = read.csv(file="./Xantusia_riversiana.csv", header=T, sep=",")
 colnames(locs)<-c("ind","species","lat","lon")
-plot(c(-119, -110), c(33.5, 38), mar=par("mar"), xlab="longitude", ylab="latitude", xaxt="n", yaxt="n", type="n", main="Xantusia_riversiana presence data")
+plot(c(-119, -110), c(33.5, 38), mar=par("mar"), xlab="longitude", ylab="latitude", xaxt="n", yaxt="n", type="n", main="Xantusia Riversiana Presence")
 rect(par("usr")[1],par("usr")[3],par("usr")[2],par("usr")[4], col="lightblue")
 map("state", xlim=c(-119, -110), ylim=c(33.5, 38), fill=T, col="cornsilk", add=T)
 
@@ -42,7 +43,7 @@ box()
 ```
 
 ### Correct for sampling bias
-```{r,message=FALSE, warning= FALSE, collapse=TRUE}
+```{r,message=FALSE, warning= FALSE}
 # create sequences of latitude and longitude values to define the grid
 longrid = seq(-119, -110,0.05)
 latgrid = seq(33.5, 38,0.05)
@@ -90,6 +91,52 @@ points(bg, cex=0.5, col="darkorange3")
 axis(1,las=1)
 axis(2,las=1)
 box()
+```
+# Create dataframe from bioclim and presense/absance.
+```{r}
+pres<-rep(1,494)
+temp1<-data.frame(pres,Ybrev_bc[,3:21])
+pres<-rep(0,961)
+temp2<-data.frame(pres,bg_bc[,3:21])
+df<-rbind(temp1,temp2)
+head(df,5)
+tail(df,5)
+```
+### Prior knowldege about the temperature range for  Xantusia Riversiana
+Tmax = 36 C
+Tmin = 6.6 C
+
+```{r}
+covs <- df[1:1455, c("pres","bio1", "bio2", "bio3")]# Not sure these are the best variables.
+## 75% of the sample size
+smp_size <- floor(0.75 * nrow(covs))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(covs)), size = smp_size)
+train <- covs[train_ind, ]
+test <- covs[-train_ind, ]
+
+pa_tr <- train$pres
+pa_te <- test$pres
+m1 <- graf(pa_tr, train[,2:4])
+pred_df<-data.frame(predict(m1,test[,2:4]))
+pred_df$posterior.mode
+library(pROC)
+auc(pa_te, pred_df$posterior.mode)
+
+par(mfrow = c(1, 3))
+plot(m1, peak = TRUE)
+DIC(m1)
+
+
+# define the threshold function
+thresh <- function(x) ifelse(x$bio1 < 150 | x$bio1 > 250 ,0.2, 0.6)
+thresh(covs)
+# fit the model, optimising the lengthscale
+m3 <- graf(pa_tr, train[,2:4],opt.l = TRUE, prior = thresh)
+pred_df<-data.frame(predict(m3,test[,2:4]))
+auc(pa_te, pred_df$posterior.mode)
+plot(m3, prior = TRUE, main = "threshold prior")
+m3
 ```
 
 
