@@ -67,7 +67,7 @@ dim(subs) # confirm that you have a smaller dataset than you started with
 ```
 
 ### Generate background data (psuedo-absent) using Raster package.
-```{r,message=FALSE, warning= FALSE, collapse=TRUE}
+```{r,message=FALSE, warning= FALSE}
 require(raster)
 
 # define circles with a radius of 50 km around the subsampled points
@@ -97,7 +97,7 @@ axis(2,las=1)
 box()
 ```
 
-```{r}
+```{r,message=FALSE, warning= FALSE}
 # pulling bioclim values
 Ybrev_bc = extract(BClim, subs[,c("lon","lat")]) # for the subsampled presence points
 bg_bc = extract(BClim, bg) # for the pseudo-absence points
@@ -113,7 +113,7 @@ bg_bc = bg_bc[!is.na(bg_bc$bio1), ] # and pull out the missing lines
 
 
 # Create dataframe from bioclim and presense/absance.
-```{r}
+```{r,message=FALSE, warning= FALSE}
 pres<-rep(1,dim(Ybrev_bc)[1])
 temp1<-data.frame(pres,Ybrev_bc[,3:21])
 pres<-rep(0,dim(bg_bc)[1])
@@ -127,7 +127,7 @@ Tmax = 36 C
 Tmin = 6.6 C
 
 First build the GRF model without the prior.
-```{r}
+```{r,message=FALSE, warning= FALSE}
 #covs <- df[1:1037, c("pres","bio1", "bio12")]# Not sure these are the best variables.
 covs <- df
 
@@ -154,15 +154,17 @@ second, buid the GRF model with  thermal niche of the species  to increase the p
 Intuitively, if some latent structure generalise the environmental variables of a location. We can expect another location with similar laten structure presents favorable conditions for a species to distribute. This notion can be captured in a GRF.
 
 Since we know the species prefered temperature, we can adject the probability of presence based on the temperature of the location by defining a threshold function as below. This prototype only considers the naive thermal niche of the species.
-```{r}
 
-# define the threshold function using the thermal niche of the species, this simply means there is higher probablity for the species to distribute when average temperure is between 15C - 35 C. The probability values were a naive guess to check the prototype works.
+* define the threshold function using the thermal niche of the species, this simply means there is higher probablity for the species to distribute when average temperure is between 15C - 35 C. The probability values were a naive guess to check the prototype works.
+
+```{r,message=FALSE, warning= FALSE}
+
 thresh <- function(x) ifelse(x$bio1 < 150 | x$bio1 > 350 ,0.3, 0.6)
 
 ```
 
 Now build the GRF with threshold function.
-```{r}
+```{r,message=FALSE, warning= FALSE}
 # fit the model, optimising the lengthscale
 m3 <- graf(pa_tr, train[,2:20],opt.l = TRUE, prior = thresh)
 pred_df<-data.frame(predict(m3,test[,2:20]))
@@ -179,7 +181,7 @@ MaxEnt
 --------
 The MaxEnt does not consider the prior knowledge. So if less number of observations results in less predition accuracy. GRF has the ability to incorporate prior knowledge as demonstraded above.
 
-```{r}
+```{r,message=FALSE, warning= FALSE}
 group_p = kfold(Ybrev_bc, 5) # vector of group assignments splitting the Ybrev_bc into 5 groups
 group_a = kfold(bg_bc, 5) # ditto for bg_bc
 
@@ -198,7 +200,7 @@ e
 ```
 
 Prediction map for MaxEnt.
-```{r}
+```{r,message=FALSE, warning= FALSE}
 
 pred_me = predict(me, BClim) # generate the predictions
 # make a nice plot
