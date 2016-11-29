@@ -15,6 +15,8 @@ url <- "http://www.californiaherps.com/lizards/images/xriversiana104.jpg"
 ```
 <img src="`r url`" height="200px" width="150px">
 
+Only 50 presence locations were selected to emphasize the capabilites of GRF over MaxEnt. GRF have higher AUC when number of observations are low. If there are many observations MaxEnt has a better AUC.
+
 ### Plot the presence on map
 ```{r, message=FALSE, warning= FALSE}
 # load package and data
@@ -23,7 +25,9 @@ require(maps)
 require(mapdata)
 require(dismo)
 require(GRaF)
+library(pROC)
 locs = read.csv(file="./Xantusia_riversiana.csv", header=T, sep=",")
+locs <-locs[1:50,]
 colnames(locs)<-c("ind","species","lat","lon")
 plot(c(-119, -110), c(33.5, 38), mar=par("mar"), xlab="longitude", ylab="latitude", xaxt="n", yaxt="n", type="n", main="Xantusia Riversiana Presence")
 rect(par("usr")[1],par("usr")[3],par("usr")[2],par("usr")[4], col="lightblue")
@@ -69,7 +73,7 @@ require(raster)
 # define circles with a radius of 50 km around the subsampled points
 x = circles(subs[,c("lon","lat")], d=50000, lonlat=T)
 # draw random points that must fall within the circles in object x
-bg = spsample(x@polygons, 1000, type='random', iter=1000)
+bg = spsample(x@polygons, 100, type='random', iter=100)
 BClim = getData("worldclim", var="bio", res=2.5, path="data/")
 YbrevRange = extent(-119.25,-112.75,33.25,38.25) # define the extent
 BClim = crop(BClim, YbrevRange)
@@ -92,57 +96,6 @@ axis(1,las=1)
 axis(2,las=1)
 box()
 ```
-# Create dataframe from bioclim and presense/absance.
-```{r}
-pres<-rep(1,494)
-temp1<-data.frame(pres,Ybrev_bc[,3:21])
-pres<-rep(0,961)
-temp2<-data.frame(pres,bg_bc[,3:21])
-df<-rbind(temp1,temp2)
-head(df,5)
-tail(df,5)
-```
-### Prior knowldege about the temperature range for  Xantusia Riversiana
-Tmax = 36 C
-Tmin = 6.6 C
-
-```{r}
-covs <- df[1:1455, c("pres","bio1", "bio2", "bio3")]# Not sure these are the best variables.
-## 75% of the sample size
-smp_size <- floor(0.75 * nrow(covs))
-set.seed(123)
-train_ind <- sample(seq_len(nrow(covs)), size = smp_size)
-train <- covs[train_ind, ]
-test <- covs[-train_ind, ]
-
-pa_tr <- train$pres
-pa_te <- test$pres
-m1 <- graf(pa_tr, train[,2:4])
-pred_df<-data.frame(predict(m1,test[,2:4]))
-pred_df$posterior.mode
-library(pROC)
-auc(pa_te, pred_df$posterior.mode)
-
-par(mfrow = c(1, 3))
-plot(m1, peak = TRUE)
-DIC(m1)
-
-
-# define the threshold function
-thresh <- function(x) ifelse(x$bio1 < 150 | x$bio1 > 250 ,0.2, 0.6)
-thresh(covs)
-# fit the model, optimising the lengthscale
-m3 <- graf(pa_tr, train[,2:4],opt.l = TRUE, prior = thresh)
-pred_df<-data.frame(predict(m3,test[,2:4]))
-auc(pa_te, pred_df$posterior.mode)
-plot(m3, prior = TRUE, main = "threshold prior")
-m3
-```
-
-
-
-
-
 
 ```{r}
 # pulling bioclim values
@@ -154,6 +107,79 @@ colnames(bgpoints) = c("lon","lat")
 bg_bc = data.frame(cbind(bgpoints,bg_bc))
 length(which(is.na(bg_bc$bio1))) # double-check for missing data
 bg_bc = bg_bc[!is.na(bg_bc$bio1), ] # and pull out the missing lines
+
+
+```
+
+
+# Create dataframe from bioclim and presense/absance.
+```{r}
+pres<-rep(1,dim(Ybrev_bc)[1])
+temp1<-data.frame(pres,Ybrev_bc[,3:21])
+pres<-rep(0,dim(bg_bc)[1])
+temp2<-data.frame(pres,bg_bc[,3:21])
+df<-rbind(temp1,temp2)
+head(df,5)
+tail(df,5)
+```
+### Prior knowldege about the temperature range for  Xantusia Riversiana
+Tmax = 36 C
+Tmin = 6.6 C
+
+First build the GRF model without the prior.
+```{r}
+#covs <- df[1:1037, c("pres","bio1", "bio12")]# Not sure these are the best variables.
+covs <- df
+
+## 75% of the sample size
+smp_size <- floor(0.75 * nrow(covs))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(covs)), size = smp_size)
+train <- covs[train_ind, ]
+test <- covs[-train_ind, ]
+
+pa_tr <- train$pres
+pa_te <- test$pres
+m1 <- graf(pa_tr, train[,2:20])
+pred_df<-data.frame(predict(m1,test[,2:20]))
+
+print(paste("Area under ROC with No knowledge of thermal niche : ",auc(pa_te, pred_df$posterior.mode)))
+#par(mfrow = c(4, 5))
+#plot(m1, peak = TRUE)
+#DIC(m1)
+```
+
+second, buid the GRF model with  thermal niche of the species  to increase the prediction accuracy of the distribution.
+
+Intuitively, if some latent structure generalise the environmental variables of a location. We can expect another location with similar laten structure presents favorable conditions for a species to distribute. This notion can be captured in a GRF.
+
+Since we know the species prefered temperature, we can adject the probability of presence based on the temperature of the location by defining a threshold function as below. This prototype only considers the naive thermal niche of the species.
+```{r}
+
+# define the threshold function using the thermal niche of the species, this simply means there is higher probablity for the species to distribute when average temperure is between 15C - 35 C. The probability values were a naive guess to check the prototype works.
+thresh <- function(x) ifelse(x$bio1 < 150 | x$bio1 > 350 ,0.3, 0.6)
+
+```
+
+Now build the GRF with threshold function.
+```{r}
+# fit the model, optimising the lengthscale
+m3 <- graf(pa_tr, train[,2:20],opt.l = TRUE, prior = thresh)
+pred_df<-data.frame(predict(m3,test[,2:20]))
+print(paste("Area under ROC with prior knowledge of thermal niche : ",auc(pa_te, pred_df$posterior.mode)))
+#plot(m3, prior = TRUE, main = "With threshold prior")
+
+```
+
+Interfacing to Raster map from the GRF needs more work. The threshold function can be made more complex as needed to consider multiple variable conditions.
+
+
+
+MaxEnt
+--------
+The MaxEnt does not consider the prior knowledge. So if less number of observations results in less predition accuracy. GRF has the ability to incorporate prior knowledge as demonstraded above.
+
+```{r}
 group_p = kfold(Ybrev_bc, 5) # vector of group assignments splitting the Ybrev_bc into 5 groups
 group_a = kfold(bg_bc, 5) # ditto for bg_bc
 
@@ -171,7 +197,7 @@ e
 
 ```
 
-
+Prediction map for MaxEnt.
 ```{r}
 
 pred_me = predict(me, BClim) # generate the predictions
@@ -198,9 +224,4 @@ axis(2,las=1)
 box()
 ```
 
-Incorporating thermal information to species distribution to increase the prediction accuracy.
-
-Intuitively, if some latent structure generalise the environmental variables of a location. We can expect another location with similar laten structure presents favorable conditions for a species to distribute. This notion can be captured in a GRF as follows.
-
-Since we know the species prefered temperature, we can adject the probability of presence based on the temperature of the location. 
 
