@@ -1,0 +1,159 @@
+---
+title: "GRF vs MaxEnt"
+author: "Chathura"
+date: "November 29, 2016"
+output: html_document
+---
+
+
+### Gaussian Random Fields
+
+Using presense data about the species Xantusia Riversiana.
+```{r, echo=FALSE}
+url <- "http://www.californiaherps.com/lizards/images/xriversiana104.jpg"
+```
+<img src="`r url`" height="200px" width="150px">
+
+### Plot the presence on map
+```{r, message=FALSE, warning= FALSE, collapse=TRUE}
+# load package and data
+require(maptools)
+require(maps)
+require(mapdata)
+require(dismo)
+require(GRaF)
+locs = read.csv(file="./Xantusia_riversiana.csv", header=T, sep=",")
+colnames(locs)<-c("ind","species","lat","lon")
+plot(c(-119, -110), c(33.5, 38), mar=par("mar"), xlab="longitude", ylab="latitude", xaxt="n", yaxt="n", type="n", main="Xantusia_riversiana presence data")
+rect(par("usr")[1],par("usr")[3],par("usr")[2],par("usr")[4], col="lightblue")
+map("state", xlim=c(-119, -110), ylim=c(33.5, 38), fill=T, col="cornsilk", add=T)
+
+text(x=-117.5, y=35.5, "California", col="cornsilk3", cex=3)
+text(x=-116, y=37.5, "Nevada", col="cornsilk3", cex=3)
+text(x=-113, y=34.5, "Arizona", col="cornsilk3", cex=3)
+text(x=-113, y=37.75, "Utah", col="cornsilk3", cex=3)
+
+points(locs$lon, locs$lat, col="darkolivegreen4", pch=20, cex=0.5)
+
+axis(1,las=1)
+axis(2,las=1)
+box()
+
+```
+
+### Correct for sampling bias
+```{r,message=FALSE, warning= FALSE, collapse=TRUE}
+# create sequences of latitude and longitude values to define the grid
+longrid = seq(-119, -110,0.05)
+latgrid = seq(33.5, 38,0.05)
+
+# identify points within each grid cell, draw one at random
+subs = c()
+for(i in 1:(length(longrid)-1)){
+  for(j in 1:(length(latgrid)-1)){
+    gridsq = subset(locs, lat > latgrid[j] & lat < latgrid[j+1] & lon > longrid[i] & lon < longrid[i+1])     
+    if(dim(gridsq)[1]>0){
+      subs = rbind(subs, gridsq[sample(1:dim(gridsq)[1],1 ), ])
+    }
+  }
+}
+dim(subs) # confirm that you have a smaller dataset than you started with
+
+```
+
+### Generate background data (psuedo-absent) using Raster package.
+```{r,message=FALSE, warning= FALSE, collapse=TRUE}
+require(raster)
+
+# define circles with a radius of 50 km around the subsampled points
+x = circles(subs[,c("lon","lat")], d=50000, lonlat=T)
+# draw random points that must fall within the circles in object x
+bg = spsample(x@polygons, 1000, type='random', iter=1000)
+BClim = getData("worldclim", var="bio", res=2.5, path="data/")
+YbrevRange = extent(-119.25,-112.75,33.25,38.25) # define the extent
+BClim = crop(BClim, YbrevRange)
+writeRaster(BClim, filename="./data/YbrevBC_2.5.grd", overwrite=T)
+BClim = brick("data/YbrevBC_2.5.grd")
+# this format plots 1 (of 19) variables stored in BClim
+plot(BClim, 1, cex=0.5, legend=T, mar=par("mar"), xaxt="n", yaxt="n", main="Annual mean temperature (ºC x 10)")
+map("state", xlim=c(-119, -110), ylim=c(33.5, 38), fill=F, col="cornsilk", add=T)
+# state names
+text(x=-117.5, y=35.5, "California", col=rgb(1,1,1,0.4), cex=3)
+text(x=-116, y=37.5, "Nevada", col=rgb(1,1,1,0.4), cex=3)
+text(x=-113, y=34.5, "Arizona", col=rgb(1,1,1,0.4), cex=3)
+text(x=-113, y=37.75, "Utah", col=rgb(1,1,1,0.4), cex=3)
+# plot the presence points
+points(locs$lon, locs$lat, pch=20, cex=0.5, col="darkgreen")
+# and the pseudo-absence points
+points(bg, cex=0.5, col="darkorange3")
+# add axes
+axis(1,las=1)
+axis(2,las=1)
+box()
+```
+
+
+
+
+
+
+```{r}
+# pulling bioclim values
+Ybrev_bc = extract(BClim, subs[,c("lon","lat")]) # for the subsampled presence points
+bg_bc = extract(BClim, bg) # for the pseudo-absence points
+Ybrev_bc = data.frame(lon=subs$lon, lat=subs$lat, Ybrev_bc)
+bgpoints = bg@coords
+colnames(bgpoints) = c("lon","lat")
+bg_bc = data.frame(cbind(bgpoints,bg_bc))
+length(which(is.na(bg_bc$bio1))) # double-check for missing data
+bg_bc = bg_bc[!is.na(bg_bc$bio1), ] # and pull out the missing lines
+group_p = kfold(Ybrev_bc, 5) # vector of group assignments splitting the Ybrev_bc into 5 groups
+group_a = kfold(bg_bc, 5) # ditto for bg_bc
+
+test = 3
+
+train_p = Ybrev_bc[group_p!=test, c("lon","lat")]
+train_a = bg_bc[group_a!=test, c("lon","lat")]
+test_p = Ybrev_bc[group_p==test, c("lon","lat")]
+test_a = bg_bc[group_a==test, c("lon","lat")]
+
+me = maxent(BClim, p=train_p, a=train_a)
+e = evaluate(test_p, test_a, me, BClim)
+e
+
+
+```
+
+
+```{r}
+
+pred_me = predict(me, BClim) # generate the predictions
+# make a nice plot
+plot(pred_me, 1, cex=0.5, legend=T, mar=par("mar"), xaxt="n", yaxt="n", main="Predicted presence of the species")
+map("state", xlim=c(-119, -110), ylim=c(33.5, 38), fill=F, col="cornsilk", add=T)
+
+# state names
+text(x=-117.5, y=35.5, "California", col=rgb(1,1,1,0.6), cex=3)
+text(x=-116, y=37.5, "Nevada", col=rgb(1,1,1,0.6), cex=3)
+text(x=-113, y=34.5, "Arizona", col=rgb(1,1,1,0.6), cex=3)
+text(x=-113, y=37.75, "Utah", col=rgb(1,1,1,0.6), cex=3)
+
+# presence points
+points(locs$lon, locs$lat, pch=20, cex=0.5, col="darkgreen")
+# pseud-absence points
+points(bg, cex=0.5, col="darkorange3")
+
+# add axes
+axis(1,las=1)
+axis(2,las=1)
+
+# restore the box around the map
+box()
+```
+
+Incorporating thermal information to species distribution to increase the prediction accuracy.
+
+Intuitively, if some latent structure generalise the environmental variables of a location. We can expect another location with similar laten structure presents favorable conditions for a species to distribute. This notion can be captured in a GRF as follows.
+
+Since we know the species prefered temperature, we can adject the probability of presence based on the temperature of the location. 
+
