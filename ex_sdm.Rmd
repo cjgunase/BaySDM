@@ -17,6 +17,8 @@ url <- "http://www.californiaherps.com/lizards/images/xriversiana104.jpg"
 
 Only 50 presence locations were selected to emphasize the capabilites of GRF over MaxEnt. GRF have higher AUC when number of observations are low. If there are many observations MaxEnt has a better AUC.
 
+
+
 ### Plot the presence on map
 ```{r, message=FALSE, warning= FALSE}
 # load package and data
@@ -155,7 +157,9 @@ Intuitively, if some latent structure generalise the environmental variables of 
 
 Since we know the species prefered temperature, we can adject the probability of presence based on the temperature of the location by defining a threshold function as below. This prototype only considers the naive thermal niche of the species.
 
-* define the threshold function using the thermal niche of the species, this simply means there is higher probablity for the species to distribute when average temperure is between 15C - 35 C. The probability values were a naive guess to check the prototype works.
+* This mean function define the threshold function using the thermal niche of the species, this simply means there is higher probablity for the species to distribute when average temperure is between 15C - 35 C. The probability values were a naive guess to check the prototype works.
+
+The mean function can take many forms, I just took it as a threshold for the prototype. 
 
 ```{r,message=FALSE, warning= FALSE}
 
@@ -174,6 +178,11 @@ print(paste("Area under ROC with prior knowledge of thermal niche : ",auc(pa_te,
 ```
 
 Interfacing to Raster map from the GRF needs more work. The threshold function can be made more complex as needed to consider multiple variable conditions.
+
+This GRF based method is very recently published here. 
+http://onlinelibrary.wiley.com/doi/10.1111/2041-210X.12523/epdf
+
+I think this framework can be further improved and a perfect research direction to improve correlative SDMs with prior mechnistic knowledge. 
 
 
 
@@ -225,5 +234,4 @@ axis(2,las=1)
 # restore the box around the map
 box()
 ```
-
 
