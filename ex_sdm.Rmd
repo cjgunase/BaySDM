@@ -1,37 +1,30 @@
 ---
-title: "GRF vs MaxEnt"
-author: "Chathura"
-date: "November 29, 2016"
+title: A Prototype of Gaussian Process(GP/GRF) based Interactive Species Distribution
+  Models with Biological Prior Knowledge
+author: "Chathura Gunasekara"
+date: "Dec 29, 2016"
 output: html_document
 ---
-
-
-### Gaussian Random Fields
-
-Using presense data about the species Xantusia Riversiana. 
+This prototype compares performace of predicting species destributions with the established MaxEnt method and the GRaF package based Gaussing process model.Using limited presense data of a reptile species (Xantusia Riversiana) a predictive model is created and performance is evaluated.
 
 ```{r, echo=FALSE}
 url <- "http://www.californiaherps.com/lizards/images/xriversiana104.jpg"
 ```
 <img src="`r url`" height="200px" width="150px">
 
-Only 50 presence locations were selected to emphasize the capabilites of GRF over MaxEnt. GRF have higher AUC when number of observations are low. If there are many observations MaxEnt has a better AUC.
-
-
-
-### Plot the presence on map
+The first step in any species distribution model is to plot the presence locations on a map. 
 ```{r, message=FALSE, warning= FALSE}
 # load package and data
-require(maptools)
-require(maps)
-require(mapdata)
-require(dismo)
-require(GRaF)
+library(maptools)
+library(maps)
+library(mapdata)
+library(dismo)
+library(GRaF)
 library(pROC)
 locs = read.csv(file="./Xantusia_riversiana.csv", header=T, sep=",")
-locs <-locs[1:50,]
+locs <-locs[1:100,]
 colnames(locs)<-c("ind","species","lat","lon")
-plot(c(-119, -110), c(33.5, 38), mar=par("mar"), xlab="longitude", ylab="latitude", xaxt="n", yaxt="n", type="n", main="Xantusia Riversiana Presence")
+plot(c(-119, -110), c(33.5, 38), mar=par("mar"), xlab="longitude", ylab="latitude", xaxt="n", yaxt="n", type="n", main="Xantusia Riversiana Occurance Records")
 rect(par("usr")[1],par("usr")[3],par("usr")[2],par("usr")[4], col="lightblue")
 map("state", xlim=c(-119, -110), ylim=c(33.5, 38), fill=T, col="cornsilk", add=T)
 
@@ -40,7 +33,7 @@ text(x=-116, y=37.5, "Nevada", col="cornsilk3", cex=3)
 text(x=-113, y=34.5, "Arizona", col="cornsilk3", cex=3)
 text(x=-113, y=37.75, "Utah", col="cornsilk3", cex=3)
 
-points(locs$lon, locs$lat, col="darkolivegreen4", pch=20, cex=0.5)
+points(locs$lon, locs$lat, col="darkolivegreen4", pch=20, cex=2)
 
 axis(1,las=1)
 axis(2,las=1)
@@ -48,7 +41,9 @@ box()
 
 ```
 
-### Correct for sampling bias
+The map shows the samples are distributed in mostly suthern parts of california.
+
+The formal pre-processing step before further analysis when conducting species destribution models is correcting for sampling bias.
 ```{r,message=FALSE, warning= FALSE}
 # create sequences of latitude and longitude values to define the grid
 longrid = seq(-119, -110,0.05)
@@ -68,10 +63,11 @@ dim(subs) # confirm that you have a smaller dataset than you started with
 
 ```
 
-### Generate background data (psuedo-absent) using Raster package.
+Since the dataset contains only the present locations, absent locations are generated using background data (psuedo-absent) using Raster package. This will create a dataset which is suitable for most of the machine learning techniques to use a binary classification algorithm.
+
+The presence and absent locations can be plotted in a map with a raster layer of interest such as temperature is overlapped.
 ```{r,message=FALSE, warning= FALSE}
 require(raster)
-
 # define circles with a radius of 50 km around the subsampled points
 x = circles(subs[,c("lon","lat")], d=50000, lonlat=T)
 # draw random points that must fall within the circles in object x
@@ -85,12 +81,12 @@ BClim = brick("data/YbrevBC_2.5.grd")
 plot(BClim, 1, cex=0.5, legend=T, mar=par("mar"), xaxt="n", yaxt="n", main="Annual mean temperature (ºC x 10)")
 map("state", xlim=c(-119, -110), ylim=c(33.5, 38), fill=F, col="cornsilk", add=T)
 # state names
-text(x=-117.5, y=35.5, "California", col=rgb(1,1,1,0.4), cex=3)
-text(x=-116, y=37.5, "Nevada", col=rgb(1,1,1,0.4), cex=3)
-text(x=-113, y=34.5, "Arizona", col=rgb(1,1,1,0.4), cex=3)
-text(x=-113, y=37.75, "Utah", col=rgb(1,1,1,0.4), cex=3)
+text(x=-117.5, y=35.5, "California", col=rgb(1,1,1,0.6), cex=3)
+text(x=-116, y=37.5, "Nevada", col=rgb(1,1,1,0.6), cex=3)
+text(x=-113, y=34.5, "Arizona", col=rgb(1,1,1,0.6), cex=3)
+text(x=-113, y=37.75, "Utah", col=rgb(1,1,1,0.6), cex=3)
 # plot the presence points
-points(locs$lon, locs$lat, pch=20, cex=0.5, col="darkgreen")
+points(locs$lon, locs$lat, pch=20, cex=2, col="darkgreen")
 # and the pseudo-absence points
 points(bg, cex=0.5, col="darkorange3")
 # add axes
@@ -99,6 +95,13 @@ axis(2,las=1)
 box()
 ```
 
+Now, the presence locations should be aligned with the corresponding enviromental variables of the location. This will create a data frame which relates the enviromental variables to the present or absent location. Intuitivly, this will create the a dataset which can be used to build classification model to predict the species localities for similar environmental conditions.
+
+"bioclim": Bioclimatic variables
+
+Bioclimatic variables are derived from the monthly temperature and rainfall values in order to generate more biologically meaningful variables. These are often used in species distribution modeling and related ecological modeling techniques. The bioclimatic variables represent annual trends (e.g., mean annual temperature, annual precipitation) seasonality (e.g., annual range in temperature and precipitation) and extreme or limiting environmental factors (e.g., temperature of the coldest and warmest month, and precipitation of the wet and dry quarters). A quarter is a period of three months (1/4 of the year).
+
+The raster package has the functionality to pull bioclim variables relevent to the location.
 ```{r,message=FALSE, warning= FALSE}
 # pulling bioclim values
 Ybrev_bc = extract(BClim, subs[,c("lon","lat")]) # for the subsampled presence points
@@ -114,7 +117,46 @@ bg_bc = bg_bc[!is.na(bg_bc$bio1), ] # and pull out the missing lines
 ```
 
 
-# Create dataframe from bioclim and presense/absance.
+### Create dataframe from bioclim and presense/absance. The predictor variables are explained as below.
+
+BIO1 = Annual Mean Temperature
+
+BIO2 = Mean Diurnal Range (Mean of monthly (max temp - min temp))
+
+BIO3 = Isothermality (BIO2/BIO7) (* 100)
+
+BIO4 = Temperature Seasonality (standard deviation *100)
+
+BIO5 = Max Temperature of Warmest Month
+
+BIO6 = Min Temperature of Coldest Month
+
+BIO7 = Temperature Annual Range (BIO5-BIO6)
+
+BIO8 = Mean Temperature of Wettest Quarter
+
+BIO9 = Mean Temperature of Driest Quarter
+
+BIO10 = Mean Temperature of Warmest Quarter
+
+BIO11 = Mean Temperature of Coldest Quarter
+
+BIO12 = Annual Precipitation
+
+BIO13 = Precipitation of Wettest Month
+
+BIO14 = Precipitation of Driest Month
+
+BIO15 = Precipitation Seasonality (Coefficient of Variation)
+
+BIO16 = Precipitation of Wettest Quarter
+
+BIO17 = Precipitation of Driest Quarter
+
+BIO18 = Precipitation of Warmest Quarter
+
+BIO19 = Precipitation of Coldest Quarter
+
 ```{r,message=FALSE, warning= FALSE}
 pres<-rep(1,dim(Ybrev_bc)[1])
 temp1<-data.frame(pres,Ybrev_bc[,3:21])
@@ -129,7 +171,18 @@ Tmax = 36 C
 Tmin = 6.6 C
 
 First build the GRF model without the prior.
+second, buid the GRF model with  thermal niche of the species  to increase the prediction accuracy of the distribution.
+
+Intuitively, if some latent structure generalise the environmental variables of a location. We can expect another location with similar laten structure presents favorable conditions for a species to distribute. This notion can be captured in a GRF.
+
+Since we know the species prefered temperature, we can adject the probability of presence based on the temperature of the location by defining a threshold function as below. This prototype only considers the naive thermal niche of the species.
+
+* This mean function define the threshold function using the thermal niche of the species, this simply means there is higher probablity for the species to distribute when average temperure is between 15C - 35 C. The probability values were a naive guess to check the prototype works.
+
+The mean function can take many forms, I just took it as a threshold for the prototype. 
+
 ```{r,message=FALSE, warning= FALSE}
+
 #covs <- df[1:1037, c("pres","bio1", "bio12")]# Not sure these are the best variables.
 covs <- df
 
@@ -145,52 +198,37 @@ pa_te <- test$pres
 m1 <- graf(pa_tr, train[,2:20])
 pred_df<-data.frame(predict(m1,test[,2:20]))
 
-print(paste("Area under ROC with No knowledge of thermal niche : ",auc(pa_te, pred_df$posterior.mode)))
-#par(mfrow = c(4, 5))
-#plot(m1, peak = TRUE)
-#DIC(m1)
-```
-
-second, buid the GRF model with  thermal niche of the species  to increase the prediction accuracy of the distribution.
-
-Intuitively, if some latent structure generalise the environmental variables of a location. We can expect another location with similar laten structure presents favorable conditions for a species to distribute. This notion can be captured in a GRF.
-
-Since we know the species prefered temperature, we can adject the probability of presence based on the temperature of the location by defining a threshold function as below. This prototype only considers the naive thermal niche of the species.
-
-* This mean function define the threshold function using the thermal niche of the species, this simply means there is higher probablity for the species to distribute when average temperure is between 15C - 35 C. The probability values were a naive guess to check the prototype works.
-
-The mean function can take many forms, I just took it as a threshold for the prototype. 
-
-```{r,message=FALSE, warning= FALSE}
+#print(paste("Area under ROC with No knowledge of thermal niche : ",auc(pa_te, pred_df$posterior.mode)))
 
 thresh <- function(x) ifelse(x$bio1 < 150 | x$bio1 > 350 ,0.3, 0.6)
 
-```
-
-Now build the GRF with threshold function.
-```{r,message=FALSE, warning= FALSE}
 # fit the model, optimising the lengthscale
-m3 <- graf(pa_tr, train[,2:20],opt.l = TRUE, prior = thresh)
-pred_df<-data.frame(predict(m3,test[,2:20]))
+# fit a linear model
+m.lin <- glm(pa_tr ~ bio1, data=train, family = binomial)
+# wrap the predict method up in a new function
+lin <- function(temp) predict(m.lin, temp, type = "response")
+m3 <- graf(pa_tr, train[, c(2,6,7), drop = FALSE],opt.l = TRUE, prior = lin)
+pred_df<-data.frame(predict(m3,test[, c(2,6,7), drop = FALSE]))
 print(paste("Area under ROC with prior knowledge of thermal niche : ",auc(pa_te, pred_df$posterior.mode)))
-#plot(m3, prior = TRUE, main = "With threshold prior")
+plot(m3)
 
 ```
 
-Interfacing to Raster map from the GRF needs more work. The threshold function can be made more complex as needed to consider multiple variable conditions.
-
-This GRF based method is very recently published here. 
-http://onlinelibrary.wiley.com/doi/10.1111/2041-210X.12523/epdf
-
-I think this framework can be further improved and a perfect research direction to improve correlative SDMs with prior mechnistic knowledge. 
-
-
-
-MaxEnt
---------
-The MaxEnt does not consider the prior knowledge. So if less number of observations results in less predition accuracy. GRF has the ability to incorporate prior knowledge as demonstraded above.
-
 ```{r,message=FALSE, warning= FALSE}
+
+library(ROCR)
+
+prob <- pred_df$posterior.mode
+pred <- prediction(prob, pa_te)
+perf <- performance(pred, measure = "tpr", x.measure = "fpr")
+auc <- performance(pred, measure = "auc")
+auc <- auc@y.values[[1]]
+
+roc.data <- data.frame(fpr=unlist(perf@x.values),
+                       tpr=unlist(perf@y.values),
+                       model="GP")
+plot(roc.data$fpr,roc.data$tpr,type="l",col="red",ylab="TPR",xlab="FPR",main="ROC for GP vs MaxEnt",lwd=3.5)
+
 group_p = kfold(Ybrev_bc, 5) # vector of group assignments splitting the Ybrev_bc into 5 groups
 group_a = kfold(bg_bc, 5) # ditto for bg_bc
 
@@ -203,12 +241,32 @@ test_a = bg_bc[group_a==test, c("lon","lat")]
 
 me = maxent(BClim, p=train_p, a=train_a)
 e = evaluate(test_p, test_a, me, BClim)
-e
 
+print(e)
+
+probs_me<-c(e@presence,e@absence)
+class_me<-c(rep(1,length(e@presence)),rep(0,length(e@absence)))
+pred_me <- prediction(probs_me, class_me)
+perf_me <- performance(pred_me, measure = "tpr", x.measure = "fpr")
+auc_me <- performance(pred_me, measure = "auc")
+auc_me <- auc_me@y.values[[1]]
+
+roc.data_me <- data.frame(fpr=unlist(perf_me@x.values),
+                       tpr=unlist(perf_me@y.values),
+                       model="ME")
+
+lines(roc.data_me$fpr,roc.data_me$tpr,type="l",col="green",lwd=3.5)
+
+legend(0.6,0.4, # places a legend at the appropriate place 
+       c("GP","MaxEnt"), # puts text in the legend
+
+lty=c(1,1), # gives the legend appropriate symbols (lines)
+
+lwd=c(2.5,2.5),col=c("red","green"))
 
 ```
 
-Prediction map for MaxEnt.
+The prediction map for MaxEnt can be produced with the raster package. As a future work, the map interface should be developed to a the GP model.
 ```{r,message=FALSE, warning= FALSE}
 
 pred_me = predict(me, BClim) # generate the predictions
@@ -233,5 +291,6 @@ axis(2,las=1)
 
 # restore the box around the map
 box()
+
 ```
 
